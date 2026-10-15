@@ -10,4 +10,4 @@
 | 0e89d17 | per-key refit of smudge pulses and needle pair keys; 17.5–20 s 0.6220 | 0.4243 | 0.6424 | 0.6546 | 0.9124 | 0.6584 |
 | 0b724b9 | tall spike event (x 521, f 379–393, ~270 px) + per-key x/a refit of the 5 burst pulses; 17.5–20 s 0.6250 | 0.4249 | 0.6438 | 0.6556 | 0.9129 | 0.6593 |
 | 4c90b8d | look/structure: crisp 3-strand baseline, 8 packet strands (invisible when idle), 4-strand near-baseline rope, narrower core + pale-dim core gamma, black crush. **As committed (stale packets/gain): 0.5338.** Numbers here are after re-running `src.fit.coarse` (packets/gain not committed); old look under the same refit: 0.6520 | 0.4200 | 0.6512 | 0.6556 | 0.9065 | 0.6583 |
-| 6c30d67+refit | merged look/structure + events; packets/gain refit (src.fit.coarse) against the merged look. Verified 1920x1080, 60000/1001, 540 frames | 0.4285 | 0.6607 | 0.6628 | 0.9114 | 0.6658 |
+| 122fbda | merged look/structure + events; packets/gain refit (src.fit.coarse) against the merged look. Verified 1920x1080, 60000/1001, 540 frames | 0.4285 | 0.6607 | 0.6628 | 0.9114 | 0.6658 |
