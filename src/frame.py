@@ -79,7 +79,9 @@ class FrameRenderer:
             g = blur(L, comp.sigma * self.sy) * (comp.sigma * SQRT_2PI if comp.sigma > 0.05 else 1.0 / self.sy)
             for c in range(3):
                 if comp.rgb[2 - c]:
-                    E[:, :, c] += comp.rgb[2 - c] * g
+                    gam = comp.gamma[2 - c] if comp.gamma else 1.0
+                    gc = g if gam == 1.0 else np.power(np.maximum(g, 0.0), gam)
+                    E[:, :, c] += comp.rgb[2 - c] * gc
         if sc.smudges:
             S = self.smudge_buffer(t)
             for c in range(3):

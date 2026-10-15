@@ -46,8 +46,11 @@ a `t` array plus values that are either scalars (constant) or arrays aligned
 with `t`, linearly interpolated.
 
 - `baseline_y`, `seed`, `supersample`, `hold`, `hold_offset`
-- `look`: `mode` ("channels"), `components: [{sigma, rgb:[R,G,B]}]`,
-  `offset`, `exposure`, `smudge_rgb`
+- `look`: `mode` ("channels"), `components: [{sigma, rgb:[R,G,B], gamma}]`,
+  `offset`, `exposure`, `smudge_rgb`. Optional per-channel `gamma`:
+  `E_c += rgb_c · g^gamma_c` (g = the peak-normalised blurred core, ≈ b·th
+  on a line). The core component uses gamma < 1 on R and B, so dim strands come
+  out pale yellow-green and bright cores saturate G first (analysis §1.4).
 - `layers: [{blur, gain}]` — layer 0 sharp, 1 soft
 - `strand_sets: [StrandSet]` — procedural families expanded deterministically
   from `(seed, set.seed)`: `count, y_spread, brightness(_spread),
@@ -57,6 +60,23 @@ with `t`, linearly interpolated.
   end_fraction` (strands ending at the bundle end), `vis_amp, vis_floor`
   (brightness follows the packet amplitude the strand carries — packet strands
   disappear when idle). `strands: [Strand]` adds explicit strands.
+  The current scene uses three families: **baseline** (3 crisp strands,
+  y spread + ambient wander so 2–3 resolve as separate lines, bright,
+  ignores packets), **packet** (8 strands, wide brightness spread, each
+  carries ~25 % of packets at full gain and is invisible when idle) and
+  **rope** (4 bright strands following every packet at ~10 % gain, visible
+  only while active: the busy, beaded band right around the baseline).
+
+  Style checks used while tuning (`out/` scratch, not committed): per quiet
+  column 1/2/3 resolved baseline peaks ≈ 55/35/9 % (ref) vs 58/37/4 %;
+  off-baseline strand peak luma p25/50/75 ≈ 42/75/142 (ref) vs ~38/62/101;
+  luma→RGB ramp within ~10/255 per channel. The scorer alone prefers one fat
+  baseline and nearly invisible packets (fine-SSIM can't match random line
+  positions), so these were kept as constraints.
+
+  **Coupling:** `gain` and the packet amplitudes are fitted against a given
+  look/structure. After changing `look`/`strand_sets`, re-run the packet fit
+  (`python -m src.fit.coarse`) before judging the score.
 - `jitter`: per-(strand, packet) lognormal gain, phase, wavelength and x
   jitter; seeded by packet *index*, so appending packets is stable.
 - `ambient`: idle wiggle (`amp`, λ range, speed, `n`, keyed `gain`).
