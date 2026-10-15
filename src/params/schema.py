@@ -73,6 +73,9 @@ class StrandJitter:
     phase: float = 0.6        # rad, stddev of per-strand phase offset
     lam: float = 0.08         # relative stddev of wavelength
     x: float = 6.0            # px, stddev of per-strand envelope shift
+    # Per (strand, packet): with probability Strand.carrier the strand carries
+    # the packet at full gain, otherwise it only follows it at `idle_gain`.
+    idle_gain: float = 0.15
 
 
 @dataclass
@@ -102,7 +105,20 @@ class StrandSet:
     knot_amp: float = 0.6          # brightness modulation along x (0..1)
     knot_lam: float = 150.0        # px wavelength of brightness knots
     knot_speed: float = 0.3        # cycles/s
-    fade_tau: float = 0.0          # unused hook for per-strand temporal fade
+    # how strongly these strands follow the wave packets
+    response: float = 1.0          # gain multiplier on all packets
+    carrier: float = 1.0           # P(strand fully carries a given packet), else idle_gain
+    # horizontal extent: a strand ends at x_end (soft over x_fade px); with
+    # probability end_fraction, otherwise it spans the whole frame
+    x_end: float = 1920.0
+    x_fade: float = 50.0
+    end_fraction: float = 0.0
+    layer: int = -1                # force layer (-1: soft_fraction decides)
+    # visibility follows activity: if vis_amp > 0 the strand's brightness is
+    # scaled by clip(local packet amplitude carried by this strand / vis_amp,
+    # vis_floor, 1), so packet strands vanish into nothing when idle
+    vis_amp: float = 0.0
+    vis_floor: float = 0.0
 
 
 @dataclass
@@ -113,6 +129,15 @@ class Strand:
     thickness: float = 1.6
     layer: int = 0
     seed: int = 0
+    response: float = 1.0
+    carrier: float = 1.0
+    x_end: float = 1e9
+    x_fade: float = 50.0
+    knot_amp: float = 0.6
+    knot_lam: float = 150.0
+    knot_speed: float = 0.3
+    vis_amp: float = 0.0
+    vis_floor: float = 0.0
 
 
 @dataclass
@@ -160,7 +185,23 @@ class Smudge:
 
 
 @dataclass
+class Component:
+    """One term of the per-channel exposure model (mode "channels").
+
+    E_c += rgb[c] * (peak-normalised Gaussian of the core buffer, sigma px).
+    """
+    sigma: float          # design px
+    rgb: List[float]      # [A_R, A_G, A_B]
+
+
+@dataclass
 class Look:
+    # "ramp": v = tonemap(I + glow) -> colour ramp lookup
+    # "channels": E_c = sum_k rgb_k[c] * G_sigma_k(I); out_c = 1 - exp(-E_c) - offset
+    mode: str = "ramp"
+    components: List[Component] = field(default_factory=list)
+    offset: float = 0.0   # subtracted after the tonemap (channels mode), 0..1
+    smudge_rgb: List[float] = field(default_factory=lambda: [0.3, 1.0, 0.1])
     exposure: float = 1.0
     # colour ramp: stops [v, r, g, b] with v = tonemapped intensity in 0..1,
     # rgb in 0..1 (display-referred, sRGB-ish)
@@ -173,6 +214,7 @@ class Look:
 
 @dataclass
 class Scene:
+    seed: int = 1
     width: int = 1920
     height: int = 1080
     fps_num: int = 60000
@@ -184,7 +226,7 @@ class Scene:
     supersample: float = 2.0   # x samples per output pixel
     look: Look = field(default_factory=Look)
     layers: List[Layer] = field(default_factory=lambda: [Layer(), Layer(blur=2.0, gain=0.6)])
-    strand_set: StrandSet = field(default_factory=StrandSet)
+    strand_sets: List[StrandSet] = field(default_factory=lambda: [StrandSet()])
     strands: List[Strand] = field(default_factory=list)  # explicit extras
     jitter: StrandJitter = field(default_factory=StrandJitter)
     ambient: Ambient = field(default_factory=Ambient)
@@ -225,7 +267,7 @@ def _build(cls, data: Any):
 
 
 _TYPES = {c.__name__: c for c in (Packet, StrandJitter, Ambient, StrandSet, Strand, Layer,
-                                  Glow, Echo, GainGrid, Smudge, Look, Scene)}
+                                  Glow, Echo, GainGrid, Smudge, Component, Look, Scene)}
 
 
 def _convert(tp, v):

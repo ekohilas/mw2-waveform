@@ -18,7 +18,8 @@ class Mp4Writer:
         cmd = ["ffmpeg", "-v", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}",
                "-framerate", f"{fps_num}/{fps_den}", "-i", "-",
-               "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
+               "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
+               "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
                "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                "-color_range", "tv", "-movflags", "+faststart", path]
