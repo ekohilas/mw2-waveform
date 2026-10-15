@@ -234,6 +234,7 @@ class Scene:
     echo: Echo = field(default_factory=Echo)
     gain: GainGrid = field(default_factory=GainGrid)
     smudges: List[Smudge] = field(default_factory=list)
+    events: List[dict] = field(default_factory=list)  # scripted events, see src/events.py
     notes: str = ""
 
     # ---------------------------------------------------------------- helpers

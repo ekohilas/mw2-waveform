@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from .color import ramp_lut, to_bgr8
+from .events import EventModel
 from .params.schema import Scene, keyed
 from .raster import add_gaussian_blob, blur, raster_strands
 from .waveform import WaveModel
@@ -21,6 +22,7 @@ class FrameRenderer:
         self.sx = self.W / 1920.0
         self.sy = self.H / 1080.0
         self.model = WaveModel(scene)
+        self.events = EventModel(scene)
         self.lut = ramp_lut(scene.look)
         n = int(round(self.W * scene.supersample))
         self.xs_out = (np.arange(n + 1) / scene.supersample).astype(np.float64)
@@ -38,7 +40,7 @@ class FrameRenderer:
         for (tt, ox, oy, g, force_layer) in passes:
             ev = self.model.evaluate(tt, self.xs - ox)
             y = (ev.y + oy) * self.sy
-            b = ev.b * g
+            b = ev.b * g * self.events.duck(tt, self.xs - ox, sc.baseline_y - ev.y)
             th = ev.thickness * self.sy
             for li in range(len(sc.layers)):
                 if force_layer is None:
@@ -48,6 +50,7 @@ class FrameRenderer:
                 if sel.any():
                     bufs[li] += raster_strands(y[sel], b[sel], th[sel], self.xs_out,
                                                self.W, self.H)
+        self.events.raster(bufs, t, self)
         return bufs
 
     def core(self, t: float) -> np.ndarray:
