@@ -198,6 +198,9 @@ class Component:
     """
     sigma: float          # design px
     rgb: List[float]      # [A_R, A_G, A_B]
+    # optional per-channel response exponent: E_c += rgb[c] * g**gamma[c]
+    # (gamma < 1 on R/B makes dim lines paler than bright ones)
+    gamma: Optional[List[float]] = None
 
 
 @dataclass
