@@ -35,3 +35,11 @@ Calibration baselines:
 | the reference itself re-encoded (ceiling) | 0.98 |
 
 Score history is tracked in `SCORES.md`.
+
+## Status
+Current best: **0.666** (see `SCORES.md`), rendered by `.venv/bin/python -m src.render`
+to `out/render.mp4` (1920x1080, 60000/1001 fps, 540 frames).
+Strongest: column energy 0.91 (activity in the right places at the right time).
+Weakest: fine SSIM 0.43 (exact per-frame line positions). Closing that gap would
+mean tracing the original footage frame by frame, which this project deliberately
+does not do; the renderer is a parametric recreation of the look and timing.
