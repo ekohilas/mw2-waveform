@@ -60,15 +60,7 @@ class FrameRenderer:
         return L
 
     def smudge_buffer(self, t: float) -> np.ndarray:
-        S = np.zeros((self.H, self.W), np.float32)
-        for sm in self.scene.smudges:
-            st = np.asarray(sm.t, dtype=np.float64)
-            a = keyed(st, sm.a, t, outside=0.0)
-            if a:
-                add_gaussian_blob(S, keyed(st, sm.x, t) * self.sx, keyed(st, sm.y, t) * self.sy,
-                                  keyed(st, sm.sx, t) * self.sx, keyed(st, sm.sy, t) * self.sy,
-                                  a, keyed(st, sm.angle, t))
-        return S
+        return self.events.smudge_buffer(t, self)  # smudges live in src/events.py
 
     def exposure(self, i: int) -> np.ndarray:
         """Per-channel linear exposure E [H, W, 3] (BGR), channels mode."""

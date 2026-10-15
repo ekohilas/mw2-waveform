@@ -29,9 +29,11 @@ Types
     spread, jit, p, th, layer, seed, redraw, down``.
 
 ``streaks``
-    Faint ghost streaks: ``n`` thin parallel diagonals trailing an anchor
-    ``x(t), y(t)`` (height above baseline) down to the baseline, ``len`` px to
-    the right. Keys: ``x, y, b``; scalars ``n, len, spacing, th, layer``.
+    A faint ghost-streak fan: ``n`` thin lines that start at ``x(t)`` at heights
+    ``y(t)·f`` (f from 1 down to ``fmin``) and descend linearly to the
+    baseline ``len(t)`` px to the right, each with a small wiggle (``wig``
+    px, wavelength ``lam``). Keys: ``x, y, len, b``; scalars ``n, fmin, wig,
+    lam, th, layer, seed``.
 
 Smudges (soft glows) stay in ``scene.smudges`` (`frame.FrameRenderer`).
 """
@@ -125,17 +127,23 @@ class EventModel:
         return res
 
     def _streaks(self, ev, t, xs):
-        xa, ya, b = _k(ev, "x", t), _k(ev, "y", t), _k(ev, "b", t, 0.2)
-        n = int(ev.get("n", 6))
-        ln = float(ev.get("len", 200.0))
-        sp = float(ev.get("spacing", 8.0))
+        xa, ya, b = _k(ev, "x", t), _k(ev, "y", t), _k(ev, "b", t, 0.05)
+        ln = max(_k(ev, "len", t, 300.0), 1.0)
+        n = int(ev.get("n", 12))
+        fmin = float(ev.get("fmin", 0.2))
+        wig, lam = float(ev.get("wig", 6.0)), float(ev.get("lam", 60.0))
         th = float(ev.get("th", 1.0))
         lay = int(ev.get("layer", 1))
+        u = np.clip((xs - xa) / ln, 0.0, 1.0)
+        ramp = 1.0 - u
+        win = b * _window(xs, xa, xa + ln, 12.0)
+        r = np.random.default_rng([int(ev.get("seed", 1)), 0x5E7])
         res = []
         for k in range(n):
-            x0 = xa + k * sp
-            disp = np.interp(xs, [x0, x0 + ln], [ya - k * sp * 0.5, 0.0], left=0.0, right=0.0)
-            res.append((disp, b * _window(xs, x0, x0 + ln, 10.0), th, lay))
+            f = 1.0 - (1.0 - fmin) * k / max(n - 1, 1)
+            ph = r.uniform(0, 2 * np.pi)
+            disp = ramp * (ya * f + wig * np.sin(2 * np.pi * xs / lam + ph))
+            res.append((disp, win * (0.6 + 0.4 * r.random()), th, lay))
         return res
 
     # ------------------------------------------------------------ ducking
@@ -178,9 +186,33 @@ class EventModel:
             return 1.0
         return 1.0 - D[None, :] * np.clip(np.abs(disp) / 8.0, 0.0, 1.0)
 
+    # ------------------------------------------------------------ smudges
+    def smudge_buffer(self, t: float, fr) -> np.ndarray:
+        """Soft blobs (scene.smudges) in exposure units at output resolution."""
+        S = np.zeros((fr.H, fr.W), np.float32)
+        for sm in self.scene.smudges:
+            if sm.layer < 0:
+                self._smudge(S, sm, t, fr)
+        return S
+
+    @staticmethod
+    def _smudge(buf, sm, t, fr):
+        st = np.asarray(sm.t, dtype=np.float64)
+        a = keyed(st, sm.a, t, outside=0.0)
+        if not a:
+            return
+        sy = keyed(st, sm.sy, t)
+        sy2 = keyed(st, sm.sy2, t) or sy
+        add_blob(buf, keyed(st, sm.x, t) * fr.sx, keyed(st, sm.y, t) * fr.sy,
+                 keyed(st, sm.sx, t) * fr.sx, sy * fr.sy, sy2 * fr.sy, a,
+                 keyed(st, sm.angle, t), sm.pow)
+
     # ------------------------------------------------------------ raster
     def raster(self, bufs: list, t: float, fr) -> None:
         """Add this frame's event strands into the layer buffers of FrameRenderer `fr`."""
+        for sm in self.scene.smudges:
+            if sm.layer >= 0:
+                self._smudge(bufs[min(sm.layer, len(bufs) - 1)], sm, t, fr)
         if not self.events:
             return
         st = self.strands(t, fr.xs)
@@ -195,3 +227,23 @@ class EventModel:
             b = np.stack([s[1] for s in sel])
             th = np.array([s[2] for s in sel]) * fr.sy
             bufs[li] += raster_strands(y, b, th, fr.xs_out, fr.W, fr.H)
+
+
+def add_blob(buf: np.ndarray, x: float, y: float, sx: float, sy: float, sy2: float, a: float,
+             angle_deg: float = 0.0, p: float = 2.0) -> None:
+    """Add exp(-0.5 (|u/sx|^p + |v/s(v)|^p)) * a into buf (output px), where the
+    vertical sigma is sy above the centre and sy2 below it."""
+    if a == 0 or sx <= 0 or sy <= 0:
+        return
+    H, W = buf.shape
+    r = 3.5 * max(sx, sy, sy2)
+    x0, x1 = int(max(0, x - r)), int(min(W, x + r + 1))
+    y0, y1 = int(max(0, y - r)), int(min(H, y + r + 1))
+    if x1 <= x0 or y1 <= y0:
+        return
+    X, Y = np.meshgrid(np.arange(x0, x1) + 0.5 - x, np.arange(y0, y1) + 0.5 - y)
+    th = np.deg2rad(angle_deg)
+    u = X * np.cos(th) + Y * np.sin(th)
+    v = -X * np.sin(th) + Y * np.cos(th)
+    s = np.where(v > 0, sy2, sy)
+    buf[y0:y1, x0:x1] += (a * np.exp(-0.5 * (np.abs(u / sx) ** p + np.abs(v / s) ** p))).astype(np.float32)
