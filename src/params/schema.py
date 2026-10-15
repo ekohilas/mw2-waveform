@@ -182,6 +182,12 @@ class Smudge:
     sy: Num = 30.0
     a: Num = 0.0          # peak intensity (linear units), 0 outside key range
     angle: Num = 0.0      # degrees
+    duck: Num = 0.0       # dim displaced waveform strands under the blob (src/events.py)
+    sy2: Num = 0.0        # sigma below the centre (0: = sy), for glows hanging to the baseline
+    pow: float = 2.0      # profile exponent (2 = Gaussian, >2 = flat-topped)
+    # -1: exposure-space blob tinted look.smudge_rgb; >=0: light added to that
+    # layer's core buffer (gets the lines' colour/glow pipeline; a ~0.1-0.3)
+    layer: int = -1
 
 
 @dataclass
@@ -234,6 +240,7 @@ class Scene:
     echo: Echo = field(default_factory=Echo)
     gain: GainGrid = field(default_factory=GainGrid)
     smudges: List[Smudge] = field(default_factory=list)
+    events: List[dict] = field(default_factory=list)  # scripted events, see src/events.py
     notes: str = ""
 
     # ---------------------------------------------------------------- helpers

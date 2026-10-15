@@ -29,6 +29,7 @@ def save_scene(scene: Scene, path: str = None, ndigits: int = 3) -> None:
     d = _round(scene_to_dict(scene), ndigits)
     packets = d.pop("packets")
     smudges = d.pop("smudges")
+    events = d.pop("events", [])
     text = json.dumps(d, indent=1)
     # collapse innermost lists (numbers / short lists) onto one line
     text = re.sub(r"\[[^\[\]{}]*\]", lambda m: json.dumps(json.loads(m.group(0)),
@@ -38,7 +39,7 @@ def save_scene(scene: Scene, path: str = None, ndigits: int = 3) -> None:
     def block(name, items):
         body = ",\n".join("  " + json.dumps(p, separators=(",", ":")) for p in items)
         return f',\n "{name}": [\n{body}\n ]' if items else f',\n "{name}": []'
-    text = text[:-2] + block("packets", packets) + block("smudges", smudges) + "\n}\n"
+    text = text[:-2] + block("packets", packets) + block("smudges", smudges) + block("events", events) + "\n}\n"
     with open(path or DEFAULT_SCENE, "w") as f:
         f.write(text)
 
