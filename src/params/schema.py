@@ -182,6 +182,7 @@ class Smudge:
     sy: Num = 30.0
     a: Num = 0.0          # peak intensity (linear units), 0 outside key range
     angle: Num = 0.0      # degrees
+    duck: Num = 0.0       # dim displaced waveform strands under the blob (src/events.py)
 
 
 @dataclass

@@ -166,6 +166,14 @@ class EventModel:
             for lo, hi in self._regions(ev, t):
                 w = k * _window(xs, lo - m, hi + m, 2.0 * m)
                 D = w if D is None else np.maximum(D, w)
+        for sm in self.scene.smudges:
+            st = np.asarray(sm.t, dtype=np.float64)
+            k = keyed(st, sm.duck, t, outside=0.0)
+            if k <= 0 or keyed(st, sm.a, t, outside=0.0) <= 0:
+                continue
+            xc, r = keyed(st, sm.x, t), 2.0 * keyed(st, sm.sx, t)
+            w = k * _window(xs, xc - r, xc + r, r)
+            D = w if D is None else np.maximum(D, w)
         if D is None:
             return 1.0
         return 1.0 - D[None, :] * np.clip(np.abs(disp) / 8.0, 0.0, 1.0)
