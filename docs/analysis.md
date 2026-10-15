@@ -132,7 +132,7 @@ to 800). Two edge effects:
 
 - **Strand count.** Quiet columns: the 2–3-strand baseline bundle (§1.2).
   Active columns (x 100–820 with off-baseline energy): median **2 off-baseline
-  strand crossings per column** (0/1/2/3/4/5+ in 4/27/36/15/6/12 %), plus the
+  strand crossings per column** (0/1/2/3/4/5+ in 4/27/35/15/6/12 %), plus the
   baseline bundle — i.e. a packet is ~3–5 overlapping strands. Strands do not
   look like scaled copies of one waveform: each has its own shape/phase, they
   share only the envelope (where and how tall). Strands are drawn on top of an
@@ -262,3 +262,128 @@ Full per-frame data: `out/analysis/timeline.csv`; per-frame, per-16-px-bin
 up/down amplitude and off-baseline energy: `out/analysis/envelope.npz`
 (`up`, `dn`, `act`, each 540 x 60) — **this is the fitting target for the
 renderer's amplitude envelope** (fit e.g. a smooth A(x,t) per content frame).
+
+## 4. Smudges and ghost streaks (`smudges.py`)
+
+Detector: σ=5 blurred luma > 10 with local fine detail < 12 % of it,
+components ≥ 120 px, centroid |dy| > 15. Found in 139 of 270 content frames, but
+area is concentrated in **17.9–19.9 s**: summed blob area per second =
+13 s: 10k, 14 s: 14k, 15 s: 7k, 16 s: 2k, 17 s: 4k, **18 s: 180k, 19 s: 198k**,
+20 s: ~0 px. Three kinds:
+
+1. **Bloom blobs on/near the baseline (13–17.5 s, and throughout).** Small
+   (16–58 px across), saturated (peak 225–253, mean ~170, RGB ≈ (140,205,90),
+   cores white), mostly within |dy| < 60, where several strands overlap at a
+   crest. They come for free from additive exposure + tonemapping if packet
+   strands overlap; no separate layer needed.
+2. **Soft green smudges (17.9–19.9 s).** Large, out-of-focus, vertically
+   elongated glows above (mostly) or below the line, riding with the
+   left-travelling burst (§3.4). Gaussian fits through the peak (σ deconvolved,
+   px @960):
+
+   | frame | centre (x,y) | σx | σy | peak luma | RGB at peak |
+   |---|---|---|---|---|---|
+   | 371 | (587, 204) | 10.8 | 21.6 | 190 | (149, 245, 67) |
+   | 423 | (400, 167) | 16.7 | 19.0 | 204 | (218, 237, 144) |
+   | 437 | (274, 174) | 10.2 | ~3 (streaky) | 55 | (41, 77, 33) |
+   | 463 | (104, 140) | 18.7 | 25.0 | 184 | (136, 241, 76) |
+
+   Tracks (centroid path): x 634 → 455 over f 357–411 (y ≈ 214, up to
+   175x172 px, mean luma ~100), x 390 → 366 f 419–429 (y ≈ 157), x 275 → 218
+   f 435–453 (y 170–200, up to 200x250 px but dim, mean 30–55), x 122 → 54
+   f 459–473 (y ≈ 136, 97x122 px, mean ~50). So: **one smudge cluster moving
+   left with the burst at ~−4…−7 px/frame, y centre 140–215 (55–130 px above the
+   baseline), σ ≈ 10–19 px horizontally, 19–25 px vertically, peak luma
+   ~180–200 (core) with a dimmer (luma 30–100) halo region 100–250 px tall.**
+   They are additive light, not semi-transparent overlays; same colour ramp as
+   the lines (slightly greener: R/G ≈ 0.6, B/G ≈ 0.3 at G 240). Inside they
+   carry fine vertical comb texture (~2–3 px period) and a few sharp strands.
+3. **Dim "ghost sheets"** (always present, strongest 18–19.9 s): fans of many
+   faint, parallel thin lines (luma 3–50, mostly 5–30, olive-green) above and
+   below packets, like echoes of earlier waveforms. Mean-luma contribution per
+   second: 12: 0.05, 13: 0.14, 14: 0.20, 15: 0.10, 16: 0.14, 17: 0.18,
+   **18: 0.36, 19: 0.36**, 20: 0.07 (vs total frame mean luma 2.7–9.7, so
+   2–5 % of the light). Vertical extent: half of it within |dy| ≤ 20, 90 %
+   within |dy| ≤ 70. Persistent: autocorrelation 0.56/0.45/0.34/0.28 at lags of
+   1/2/4/8 content frames (slower than the bright strands). Mostly below the
+   scorer's `lit` threshold (luma > 8), so it only matters for the blurred
+   metrics; low priority.
+
+## 5. Relation to the audio (`audio.py`)
+
+The visual is audio-driven. Log RMS loudness of the source audio (decoded in
+memory, never stored) vs visual activity, Pearson r:
+
+| visual | full-band RMS | voice band 300–3400 Hz | < 200 Hz | best lag |
+|---|---|---|---|---|
+| activity frac | 0.76 (0.80 at best lag) | 0.74 | 0.43 | audio leads by 3 frames (50 ms) |
+| mean luma | 0.72 | 0.71 | 0.38 | 4 frames |
+| p90 amplitude | 0.66 | 0.62 | 0.34 | 3 frames |
+
+Smoothed (σ = 7 frames) activity vs voice envelope: r = 0.84. Loudness per
+0.5 s (dBFS): 12.0 −43, 12.5 −45, 13.0 −38, 13.5 −33, 14.0 −33, 14.5 −34,
+15.0 −38, 15.5 −37, 16.0 −36, 16.5 −38, 17.0 −39, **17.5 −32, 18.0 −33**,
+18.5 −35, 19.0 −37, 19.5 −38, 20.0 −39, 20.5 −40. Linear fits (audio shifted
+by 3 frames): `act_frac ≈ 0.022·dB + 1.18`, `p90_amp ≈ 3.8·dB + 188`.
+Since audio samples may not be embedded, use this only as confirmation that a
+voice-like envelope (fast syllabic bursts on a slower phrase envelope) is the
+right generator; fit the renderer's envelope to the **visual** data
+(`envelope.npz`), which is what the scorer sees.
+
+## 6. Recommendations for the renderer
+
+Score anatomy (`tools/score.py`): fine SSIM on the lit region and blurred
+SSIM/colour (σ = 6) reward correct layout, brightness and colour; the energy
+term compares per-frame column brightness (σ = 8 along x). Strand-level
+matching is impossible procedurally (strands redraw every content frame), so
+win on: exact baseline, per-frame column-energy envelope, colour pipeline,
+29.97 fps holds, and the scripted big events.
+
+**Rendering model** (lengths @960; ×2 at 1080p):
+
+1. **Time base**: generate content at 29.97 fps (270 content frames), output
+   frame `i` shows content `max(1, 2·((i+1)//2) − 1)` (§3.1). No cuts.
+2. **Exposure buffers** (float, per channel, linear). Every strand is a
+   polyline `y(x)` splatted with the 3-Gaussian kernel of §1.4 (core σ 1.0,
+   inner 3.3, outer 7.6; A_R/A_G/A_B per component from the table), times a
+   per-strand weight `w`. Output `255·(1−exp(−E_c)) − 2`, clip [0,255].
+   Background 0. No grain, no vignette, no global bloom beyond the 7.6 px term.
+3. **Baseline bundle**: 3 strands at y0 = 269.5 with independent slow wobble
+   (±2–3 px, λ 100–300 px, re-drawn each content frame with small changes),
+   weights 1 : 0.6 : 0.38 (sum calibrated so a quiet column peaks at luma ~210
+   and matches the §1.3 profile); along-x brightness beading (multiplicative
+   noise, correlation length ~10 px, range → luma 130–245). Bundle weight ×1
+   for x ≤ 805, smoothstep to ×0.45 by x = 845, slight fade to x = 960.
+4. **Packet strands**: per content frame, K = 2–4 strands (more when loud),
+   `y_k(x) = y0 + A(x,t) · s_k(x,t)`, with `s_k` a sum of 2–4 sinusoids,
+   λ 25–90 px (median ~40), random phases/signs, about half the components
+   carried over to the next content frame shifted −1…−2 px, the rest
+   re-randomised. Strand weights drawn so peak luma spans 35–205 (median ~100);
+   pale core tint for dim strands (§1.4). Envelope `A(x,t)` ≥ 0, zero outside
+   x ≈ 90–830, fitted per content frame to `envelope.npz` (`up`/`dn` per 16-px
+   bin give amplitude; `act` gives off-baseline column energy).
+5. **Scripted events**: needle pair born at x 478, f 339, moving ±5.8 px/frame
+   to the edges by f ~410, height 270 → ~120 px; needle clusters at f 85–91
+   (x ~365) and 131–135 (x ~408), heights 100–175; left-travelling burst
+   (tall 150–230 px strands) x 620 → 70 over f 360–471 (path in §3.4).
+6. **Smudge layer** (additive into the same exposure buffer before tonemap):
+   2-D anisotropic Gaussians σx 10–19, σy 19–25, peak exposure giving luma
+   ~190, tracking the left-travelling burst (positions in §4) at y 140–215,
+   active f 357–475, plus a dimmer large halo (luma 30–60, ~100x200 px) around
+   it f 420–475. Optional: a faint ghost-sheet layer (10–30 thin strands,
+   w giving luma 5–30) near packets, persistent over ~8 content frames,
+   strongest 18–19.9 s.
+
+**What the fitting step should extract** (all from `ref/`, store only
+parameters):
+
+- Per content frame (270) x 16-px bin (60): target amplitude (`up`, `dn`) and
+  off-baseline column energy (`act`) from `envelope.npz`; compress to a smooth
+  keyframed A(x,t) (e.g. 2–3 Gaussian lobes per frame or a low-rank fit).
+- Then calibrate strand count/weight per frame so the rendered column-energy
+  profile (σ = 8, the scorer's) matches the reference per frame: iterate
+  render → measure → per-bin gain.
+- Baseline: verify a quiet frame (e.g. 0–60) scores ssim > 0.9 on its own
+  before adding packets — it dominates the lit region in quiet passages.
+- Event tracks (needles, burst, smudges) as keyframes from `motion.py` /
+  `smudges.py` / `out/analysis/smudges.csv`.

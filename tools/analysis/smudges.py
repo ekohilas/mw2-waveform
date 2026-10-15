@@ -81,6 +81,39 @@ def main():
               f"{np.mean([r['cy'] for r in t]):.0f} | {max(r['w'] for r in t)}x{max(r['h'] for r in t)} | "
               f"{max(r['peak'] for r in t):.0f} / {np.mean([r['mean'] for r in t]):.0f} | "
               f"({rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}) | {vx:+.1f} |")
+    # shape of the largest instance of each track: 1-D Gaussian fits through the
+    # luma peak (horizontal and vertical), colour at the peak
+    print("\nlargest instance per track (Gaussian fits through the blob peak):")
+    print("| frame | centre (x,y) | sigma_x | sigma_y | peak luma | RGB at peak |")
+    print("|---|---|---|---|---|---|")
+    from scipy.optimize import curve_fit
+
+    def g(x, a, c, s, o):
+        return a * np.exp(-(x - c) ** 2 / (2 * s * s)) + o
+    for t in tracks:
+        r = max(t, key=lambda r: r["area"])
+        if r["area"] < 300:
+            continue
+        i = r["frame"]
+        l = cv2.GaussianBlur(L[i], (0, 0), 1.5)
+        x0, y0, w, h = r["x0"], r["y0"], r["w"], r["h"]
+        sub = l[y0:y0 + h, x0:x0 + w]
+        py, px = np.unravel_index(np.argmax(sub), sub.shape)
+        py += y0
+        px += x0
+        fits = []
+        for prof, c in ((l[py, max(0, px - 60):px + 60], min(px, 60)),
+                        (l[max(0, py - 60):py + 60, px], min(py, 60))):
+            xs = np.arange(len(prof), dtype=float)
+            try:
+                po, _ = curve_fit(g, xs, prof, p0=[prof.max(), c, 8, 0], maxfev=4000)
+                fits.append(abs(po[2]))
+            except RuntimeError:
+                fits.append(float("nan"))
+        rgb = load(i)[max(0, py - 2):py + 3, max(0, px - 2):px + 3].reshape(-1, 3).mean(0)
+        print(f"| {i} | ({px},{py}) | {fits[0]:.1f} | {fits[1]:.1f} | {l[py, px]:.0f} | "
+              f"({rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}) |")
+
     # activity over time
     per_sec = {}
     for r in rows:
