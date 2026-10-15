@@ -84,3 +84,33 @@ amplitude keyed at ~15 Hz) and `gain` with a matching (t, x) grid, then
 iterates render → measure → update so the per-bin rms vertical extent and
 summed luma match the reference. A finer fitter can replace the grid with
 free packets (any number, own keyframes) without changing the renderer.
+
+## Scripted events (`src/events.py`)
+The coherent moving features of docs/analysis.md §3.4/§4 are compact keyframed
+objects in `scene.events` (one dict each, `type` + `t[]` keys, ≤ ~10 keys) and
+`scene.smudges`; nothing is traced from the reference. Hooks: `FrameRenderer`
+builds an `EventModel`; `strand_layers` multiplies waveform brightness by
+`events.duck(...)` and calls `events.raster(...)`; `smudge_buffer` delegates to
+`events.smudge_buffer`.
+
+| type | what | keys |
+|---|---|---|
+| `needle_pair` | two ECG needles born at `x0`, centres `x0 ± d(t)`: up-stroke to `up`, down-stroke to `dn` `gap` px further out | `d, up, dn, b`; `x0, w, gap, th, layer` |
+| `bump` | `n` flat-topped spikes `a·exp(-½|dx/w|^p)` travelling along `x(t)`, offsets re-drawn every `redraw` s | `x, a, b`; `n, w, spread, jit, p, down, seed` |
+| `streaks` | faint fan of `n` lines from `x(t)` at heights `y·f` down to the baseline `len` px to the right | `x, y, len, b`; `n, fmin, wig, lam` |
+
+Any event (and any smudge) may set `duck` (0..1): inside its footprint the
+*displaced* parts of the waveform strands are dimmed, so the event replaces the
+packet energy the coarse grid had put there instead of adding to it.
+Smudges gained `sy2` (sigma below the centre), `pow` (flat-top exponent) and
+`layer` (−1: exposure-space blob tinted `look.smudge_rgb`; ≥ 0: light added to
+that layer's core buffer, so it gets the lines' colour/glow pipeline).
+
+Current set (17.5–20 s): needle pair f 339–412; burst = five plateau pulses
+(`burst1..5`) + a tall spike (f 379–393) travelling x 612 → 70 (960-px), each
+pulse paired with a smudge; ghost-streak fan f 455–471. Fit with
+`src/fit/events.py` (`Scorer` on content frames 331–479, `coord_search`).
+After changing events, re-running `src.fit.coarse` lets the packet grid
+account for the event energy (tested with default args: 0.659 → 0.665 total,
+17.5–20 s 0.625 → 0.634; the same refit without events gives 0.655 / 0.597;
+keep ducking on, it still helps after a refit).
