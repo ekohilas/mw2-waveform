@@ -8,3 +8,4 @@
 | bacf133 | smudges: 5 keyframed pulses (f 361–473, x 612→70, y 200→140) of the soft green glow on the left-travelling burst, with local ducking; 17.5–20 s 0.6158 | 0.4229 | 0.6394 | 0.6527 | 0.9120 | 0.6567 |
 | db45f5d | burst: 5 plateau ('tombstone') bump pulses riding the smudges, ghost-streak fan f 455–471, smudges with sy2/pow/layer; 17.5–20 s 0.6201 | 0.4241 | 0.6419 | 0.6540 | 0.9117 | 0.6579 |
 | 0e89d17 | per-key refit of smudge pulses and needle pair keys; 17.5–20 s 0.6220 | 0.4243 | 0.6424 | 0.6546 | 0.9124 | 0.6584 |
+| 0b724b9 | tall spike event (x 521, f 379–393, ~270 px) + per-key x/a refit of the 5 burst pulses; 17.5–20 s 0.6250 | 0.4249 | 0.6438 | 0.6556 | 0.9129 | 0.6593 |
