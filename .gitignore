@@ -1,0 +1,13 @@
+# Source media (copyrighted, never commit)
+*.mkv
+*.mp4
+*.mov
+*.webm
+*.wav
+ref/
+# Local env / outputs
+.venv/
+out/
+__pycache__/
+*.pyc
+.DS_Store
