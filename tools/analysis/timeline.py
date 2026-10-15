@@ -93,80 +93,67 @@ def main():
         print(f"| {seg[0]['t']:.1f} | {s}-{s + len(seg) - 1} | {g('mean_luma'):.2f} | {g('act_frac'):.2f} | "
               f"{g('act_cx'):.0f} | {g('act_sx'):.0f} | {g('p90_amp'):.0f} | {g('max_up', np.max):.0f} | {g('max_dn', np.max):.0f} |")
 
-    # ---- packet tracks: segments of smoothed amplitude > thr in each content frame,
-    # linked across frames by x-overlap (allow a gap of 2 frames).
+    # ---- packets: per content frame, x-segments where the (x-smoothed) amplitude
+    # envelope exceeds THR px; linked to the previous content frame when they
+    # overlap by >= 50 % of the shorter segment.
     amp = np.maximum(up_b, dn_b).astype(np.float32)
     amp = cv2.GaussianBlur(amp, (0, 0), sigmaX=1.0, sigmaY=0.01)
-    thr = 25
-    tracks, active = [], []
-    for i in range(N):
-        on = amp[i] > thr
-        segs = []
-        j = 0
-        while j < nb:
-            if on[j]:
-                k = j
-                while k + 1 < nb and on[k + 1]:
-                    k += 1
-                segs.append((j, k))
-                j = k + 1
-            else:
-                j += 1
-        still = []
-        used = set()
-        for tr in active:
-            a0, a1 = tr["cur"]
-            hit = [s for s in segs if s[0] <= a1 + 1 and s[1] >= a0 - 1]
-            if hit:
-                lo = min(s[0] for s in hit)
-                hi = max(s[1] for s in hit)
-                for s in hit:
-                    used.add(s)
-                tr["cur"] = (lo, hi)
-                tr["end"] = i
-                tr["x0"] = min(tr["x0"], lo)
-                tr["x1"] = max(tr["x1"], hi)
-                tr["peak"] = max(tr["peak"], float(amp[i, lo:hi + 1].max()))
-                tr["path"].append((i, (lo + hi + 1) / 2))
-                still.append(tr)
-            elif i - tr["end"] <= 2:
-                still.append(tr)
-            else:
-                tracks.append(tr)
-        for s in segs:
-            if s not in used:
-                still.append(dict(start=i, end=i, cur=s, x0=s[0], x1=s[1],
-                                  peak=float(amp[i, s[0]:s[1] + 1].max()), path=[(i, (s[0] + s[1] + 1) / 2)]))
-        # merge tracks whose current spans overlap
-        merged = []
-        for tr in sorted(still, key=lambda t: t["cur"][0]):
-            if merged and tr["cur"][0] <= merged[-1]["cur"][1] and tr["end"] == i and merged[-1]["end"] == i:
-                m = merged[-1]
-                m["cur"] = (m["cur"][0], max(m["cur"][1], tr["cur"][1]))
-                m["start"] = min(m["start"], tr["start"])
-                m["x0"] = min(m["x0"], tr["x0"])
-                m["x1"] = max(m["x1"], tr["x1"])
-                m["peak"] = max(m["peak"], tr["peak"])
-            else:
-                merged.append(tr)
-        active = merged
-    tracks += active
-    tracks = [t for t in tracks if t["end"] - t["start"] >= 6]
-    tracks.sort(key=lambda t: t["start"])
     b = args.bin
+    thr = 30
+    content = list(range(1, N, 2))          # frames 2k+1 carry new content (§3)
+    segs_by_frame, all_segs = {}, []
+    for i in content:
+        on = np.r_[False, amp[i] > thr, False]
+        edges = np.flatnonzero(np.diff(on.astype(int)))
+        segs = [(s0, s1 - 1) for s0, s1 in zip(edges[::2], edges[1::2])]
+        segs_by_frame[i] = segs
+        for s0, s1 in segs:
+            all_segs.append(((s1 - s0 + 1) * b, float(amp[i, s0:s1 + 1].max())))
+    ws = np.array([w for w, _ in all_segs])
+    ps = np.array([p for _, p in all_segs])
+    n_per = np.array([len(segs_by_frame[i]) for i in content])
+    print(f"\npackets (amp>{thr}px segments): per content frame count p10/50/90 =",
+          np.percentile(n_per, [10, 50, 90]).tolist(),
+          "| width px p10/50/90 =", np.percentile(ws, [10, 50, 90]).tolist(),
+          "| peak amp px p10/50/90 =", np.percentile(ps, [10, 50, 90]).round(0).tolist())
+    tracks, open_ = [], []
+    for i in content:
+        nxt = []
+        for s in segs_by_frame[i]:
+            hit = None
+            for tr in open_:
+                a0, a1 = tr["cur"]
+                ov = min(a1, s[1]) - max(a0, s[0]) + 1
+                if ov >= 0.5 * min(a1 - a0 + 1, s[1] - s[0] + 1):
+                    hit = tr
+                    break
+            if hit is None:
+                hit = dict(start=i, x0=s[0], x1=s[1], peak=0.0, path=[])
+                tracks.append(hit)
+            else:
+                open_.remove(hit)
+            hit.update(cur=s, end=i, x0=min(hit["x0"], s[0]), x1=max(hit["x1"], s[1]),
+                       peak=max(hit["peak"], float(amp[i, s[0]:s[1] + 1].max())))
+            hit["path"].append((i, (s[0] + s[1] + 1) / 2 * b))
+            nxt.append(hit)
+        open_ = nxt
+    dur = np.array([(t["end"] - t["start"]) // 2 + 1 for t in tracks])
+    print("packet lifetime in content frames: p50/75/90/99 =", np.percentile(dur, [50, 75, 90, 99]).tolist(),
+          f"(n={len(tracks)})")
     with open(os.path.join(OUT_DIR, "packets.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["start", "end", "t_start", "t_end", "x0", "x1", "peak_amp_px", "drift_px_per_frame"])
-        print(f"\n| # | frames | t (s) | x range (px) | peak amp (px) | centre drift (px/frame) |")
-        print("|---|---|---|---|---|---|")
-        for n, t in enumerate(tracks):
+        for t in tracks:
             p = np.array(t["path"])
-            drift = np.polyfit(p[:, 0], p[:, 1] * b, 1)[0] if len(p) > 3 else 0.0
-            row = [t["start"], t["end"], round(src_time(t["start"]), 2), round(src_time(t["end"]), 2),
-                   t["x0"] * b, (t["x1"] + 1) * b, round(t["peak"]), round(drift, 2)]
-            w.writerow(row)
-            print(f"| {n} | {row[0]}-{row[1]} | {row[2]:.2f}-{row[3]:.2f} | {row[4]}-{row[5]} | {row[6]} | {row[7]:+.2f} |")
-
+            drift = np.polyfit(p[:, 0], p[:, 1], 1)[0] if len(p) > 2 else 0.0
+            w.writerow([t["start"], t["end"], round(src_time(t["start"]), 2), round(src_time(t["end"]), 2),
+                        t["x0"] * b, (t["x1"] + 1) * b, round(t["peak"]), round(drift, 2)])
+    big = sorted(tracks, key=lambda t: -t["peak"] * ((t["end"] - t["start"]) // 2 + 1))[:20]
+    print("\n| frames | t (s) | x range (px) | peak amp (px) | content frames |")
+    print("|---|---|---|---|---|")
+    for t in sorted(big, key=lambda t: t["start"]):
+        print(f"| {t['start']}-{t['end'] + 1} | {src_time(t['start']):.2f}-{src_time(t['end'] + 1):.2f} | "
+              f"{t['x0'] * b}-{(t['x1'] + 1) * b} | {t['peak']:.0f} | {(t['end'] - t['start']) // 2 + 1} |")
 
 if __name__ == "__main__":
     main()
