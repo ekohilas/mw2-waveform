@@ -45,6 +45,8 @@ from tools.trace import metrics as M  # noqa: E402
 
 REF_DIR = os.path.join(ROOT, "ref", "frames")
 CONTENT = list(range(1, 540, 2))
+B_MAX = 3.0                     # brightness cap (real strands are <~1.5)
+WARM_VERTEX_CAP = 8000         # warm-started strands kept per frame (by mass)
 
 
 def isp(v):
@@ -80,8 +82,13 @@ class FrameFit:
         cat = lambda k: np.concatenate([s[k] for s in st]).astype(np.float32)
         P = {}
         if st:
-            P["x0"] = torch.tensor(cat("x"), device=dev)
-            P["xi"] = torch.zeros_like(P["x0"], requires_grad=True)
+            # vertices live on integer columns x0 (strictly increasing within a
+            # strand) plus a bounded offset, so x stays monotone across warm starts
+            x = cat("x")
+            x0 = np.round(x)
+            P["x0"] = torch.tensor(x0, device=dev)
+            off = np.clip((x - x0) / 0.45, -0.99, 0.99)
+            P["xi"] = torch.tensor(np.arctanh(off).astype(np.float32), device=dev, requires_grad=True)
             P["y"] = torch.tensor(cat("y"), device=dev, requires_grad=True)
             P["beta"] = torch.tensor(isp(cat("b")).astype(np.float32), device=dev, requires_grad=True)
             u = np.clip(cat("u") / 2, 1e-3, 1 - 1e-3)
@@ -95,7 +102,7 @@ class FrameFit:
     def _strand_dict(self, P):
         if "x0" not in P:
             return None
-        return {"X": P["x0"] + 0.45 * torch.tanh(P["xi"]), "Y": P["y"], "B": F.softplus(P["beta"]),
+        return {"X": P["x0"] + 0.45 * torch.tanh(P["xi"]), "Y": P["y"], "B": F.softplus(P["beta"]).clamp(max=B_MAX),
                 "U": 2 * torch.sigmoid(P["om"]), "first": P["first"], "last": P["last"]}
 
     def _store(self, P):
@@ -131,7 +138,7 @@ class FrameFit:
             y = P["y"]
             inner = ~(P["first"][1:-1] | P["last"][1:-1])
             d2 = (y[2:] - 2 * y[1:-1] + y[:-2])[inner]
-            L = L + 1e-6 * (d2.abs()).sum() / max(1, len(self.strands))
+            L = L + 1e-6 * d2.abs().sum() / max(1, len(self.strands))
         return L, m
 
     def optimise(self, iters, s, lr_scale=1.0, fit_look=False, tag=""):
@@ -159,7 +166,14 @@ class FrameFit:
             L, m = self.loss(out, lit, P)
             opt.zero_grad()
             L.backward()
+            if "y" in P:                      # dark vertices have no image gradient: freeze them
+                with torch.no_grad():
+                    yk = P["y"].clone()
             opt.step()
+            if "y" in P:
+                with torch.no_grad():
+                    dark = F.softplus(P["beta"]) < 0.004
+                    P["y"].copy_(torch.where(dark, yk, P["y"]))   # (no data-dependent shapes on MPS)
             if fit_look:
                 with torch.no_grad():         # keep the look physical
                     look_p["A"].clamp_(min=0)
@@ -172,7 +186,8 @@ class FrameFit:
         if fit_look:
             self.look_t = {k: v.detach() for k, v in look_p.items()}
         if self.verbose:
-            print(f"    [{tag} s{s} x{iters}] " + " ".join(f"{k} {float(v.detach()):.4f}" for k, v in m.items()),
+            nv = sum(len(q["x"]) for q in self.strands)
+            print(f"    [{tag} s{s} x{iters} nv {nv}] " + " ".join(f"{k} {float(v.detach()):.4f}" for k, v in m.items()),
                   flush=True)
         return m
 
@@ -194,17 +209,34 @@ class FrameFit:
         self.strands += new
         return len(new)
 
-    def prune(self, bmin=0.012, min_len=4):
+    def prune(self, bmin=0.004, min_len=4, gap=20):
         out = []
         for s in self.strands:
             on = np.nonzero(s["b"] > bmin)[0]
             if len(on) < min_len:
                 continue
-            a, b = max(0, on[0] - 1), min(len(s["x"]), on[-1] + 2)
-            out.append({k: v[a:b] for k, v in s.items()})
+            # split at long interior dark gaps
+            gaps = np.nonzero(np.diff(on) > gap)[0]
+            for piece in np.split(on, gaps + 1):
+                if len(piece) < min_len:
+                    continue
+                a, b = max(0, piece[0] - 1), min(len(s["x"]), piece[-1] + 2)
+                out.append({k: v[a:b] for k, v in s.items()})
         n = len(self.strands) - len(out)
         self.strands = out
         return n
+
+    def cap_vertices(self, cap):
+        """Keep the highest-mass strands within a total vertex budget."""
+        mass = [float((s["b"] * np.hypot(np.gradient(s["x"]), np.gradient(s["y"]))).sum())
+                if len(s["x"]) > 1 else 0.0 for s in self.strands]
+        keep, tot = [], 0
+        for i in np.argsort(mass)[::-1]:
+            n = len(self.strands[i]["x"])
+            if tot + n <= cap:
+                keep.append(i)
+                tot += n
+        self.strands = [self.strands[i] for i in sorted(keep)]
 
     def exact_metrics(self, s=2):
         """Exact tools/score.py metrics of the quantised render (no codec)."""
@@ -270,13 +302,15 @@ def fit_frame(c, look, dev, prev=None, verbose=True, fit_look=False, budget=1.0)
         ff.haze = prev.haze.copy()
         n_warm = len(ff.strands)
         ff.optimise(int(60 * budget), 1, tag="warm")
-        ff.prune(bmin=0.03)
+        ff.prune(bmin=0.02)
+        ff.cap_vertices(WARM_VERTEX_CAP)
         tm("warm")
     L, _ = ff.residual_core()
     tm("deconv")
     n1 = ff.add_traced(L)
     tm("trace")
     ff.optimise(int(150 * budget), 1, tag="fit1", fit_look=fit_look)
+    ff.prune()
     tm("opt1")
     L, _ = ff.residual_core(150)
     tm("deconv")
@@ -301,11 +335,39 @@ def fit_frame(c, look, dev, prev=None, verbose=True, fit_look=False, budget=1.0)
     return ff
 
 
+def load_fit(c, look, dev, d):
+    """A FrameFit holding a saved trace (warm start across process restarts)."""
+    strands, haze, info = T.load_trace(T.frame_path(c, d))
+    ff = FrameFit(c, info.get("look", look), dev, verbose=False)
+    ff.strands, ff.haze, ff.info = strands, haze, info
+    if "look" not in ff.info:
+        ff.info["look"] = look
+    return ff
+
+
 def look_dict(look_t, base):
     d = dict(base)
     for k in ("sigma", "A", "soft_sigma", "offset", "haze_rgb"):
         d[k] = look_t[k].detach().cpu().numpy().tolist()
     return d
+
+
+def report(d):
+    rows = []
+    for c in CONTENT:
+        p = T.frame_path(c, d)
+        if os.path.exists(p):
+            rows.append(T.load_trace(p)[2])
+    keys = ["ssim", "ssim_blur", "color", "energy"]
+    print(f"{len(rows)} content frames fitted; exact metrics of the 2x render (no codec)")
+    for s0 in range(9):
+        seg = [r for r in rows if s0 * 60 <= r["c"] < (s0 + 1) * 60]
+        if seg:
+            print(f"  t={12 + s0}-{13 + s0}s  " + "  ".join(f"{k}={np.mean([r[k] for r in seg]):.4f}" for k in keys)
+                  + f"  strands={np.mean([r['n_strands'] for r in seg]):.0f}  time={np.mean([r['time'] for r in seg]):.0f}s")
+    print("ALL  " + "  ".join(f"{k}={np.mean([r[k] for r in rows]):.4f}" for k in keys)
+          + f"  min ssim {min(r['ssim'] for r in rows):.4f} (c{min(rows, key=lambda r: r['ssim'])['c']})"
+          + f"  total fit time {sum(r['time'] for r in rows) / 3600:.2f} h")
 
 
 def main():
@@ -315,10 +377,14 @@ def main():
     ap.add_argument("--span", type=int, nargs=2, help="content frames in [a, b] (for parallel chunks)")
     ap.add_argument("--out", default=T.TRACE_DIR)
     ap.add_argument("--no-warm", action="store_true")
+    ap.add_argument("--skip-done", action="store_true", help="keep frames already in --out (resume)")
     ap.add_argument("--fit-look", action="store_true", help="also fit the global look per frame")
     ap.add_argument("--budget", type=float, default=1.0, help="iteration multiplier")
     ap.add_argument("--cpu", action="store_true")
+    ap.add_argument("--report", action="store_true", help="summarise the saved per-frame fit metrics")
     args = ap.parse_args()
+    if args.report:
+        return report(args.out)
     dev = torch.device("cpu") if args.cpu else T.default_device()
     look = T.load_look(args.out)
     if args.span:
@@ -329,10 +395,17 @@ def main():
     rows = []
     for c in frames:
         use_prev = prev if (prev is not None and not args.no_warm and prev.c == c - 2) else None
+        if use_prev is None and not args.no_warm and os.path.exists(T.frame_path(c - 2, args.out)):
+            use_prev = load_fit(c - 2, look, dev, args.out)      # resume / chunk boundary
+        if args.skip_done and os.path.exists(T.frame_path(c, args.out)):
+            prev = load_fit(c, look, dev, args.out)
+            continue
         ff = fit_frame(c, look, dev, use_prev, fit_look=args.fit_look, budget=args.budget)
         ff.save(args.out, ff.info)
         rows.append(ff.info)
         prev = ff
+        if dev.type == "mps":
+            torch.mps.empty_cache()
         if args.fit_look:
             look = ff.info["look"]          # chain the look estimate to the next frame
     if args.fit_look and rows:

@@ -42,6 +42,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRACE_DIR = os.path.join(ROOT, "out", "traces")
 TW, TH = 960, 540                 # trace coordinate frame (= scorer resolution)
 N_FRAMES = 540
+SAMPLE_BUCKET = 1 << 15
 
 
 def content_index(i: int) -> int:
@@ -110,8 +111,17 @@ def sample_strands(X, Y, B, U, first, last, scale: float, step: float = 0.5):
         n = torch.clamp(torch.ceil(chord * 1.3 / step), 1, 4096).long()
         idx = torch.repeat_interleave(torch.arange(len(seg), device=X.device), n)
         start = torch.cumsum(n, 0) - n
-        k = torch.arange(int(n.sum().item()), device=X.device) - start[idx]
+        tot = int(n.sum().item())
+        k = torch.arange(tot, device=X.device) - start[idx]
         t = (k.float() + 0.5) / n[idx].float()
+        # pad to a bucketed length with zero-mass samples: a new tensor shape
+        # every iteration makes MPS slow down steadily (graph cache growth)
+        padn = -tot % SAMPLE_BUCKET
+        valid = torch.ones(tot + padn, device=X.device)
+        if padn:
+            idx = torch.cat([idx, torch.zeros(padn, dtype=idx.dtype, device=X.device)])
+            t = torch.cat([t, torch.full((padn,), 0.5, device=X.device)])
+            valid[tot:] = 0
     nn_ = n[idx].float()
     h_ = h[idx]
     t2, t3 = t * t, t * t * t
@@ -124,7 +134,7 @@ def sample_strands(X, Y, B, U, first, last, scale: float, step: float = 0.5):
     ds = torch.sqrt(h_ ** 2 + dydt ** 2 + 1e-12) / nn_
     bs = B[seg][idx] * (1 - t) + B[seg + 1][idx] * t
     us = U[seg][idx] * (1 - t) + U[seg + 1][idx] * t
-    m = bs * ds
+    m = bs * ds * valid
     w0 = (1 - us).clamp(min=0)
     w2 = (us - 1).clamp(min=0)
     return px, py, [m * w0, m * (1 - w0 - w2), m * w2]
@@ -138,13 +148,16 @@ def splat(px, py, m, Hs, Ws):
     fy = py - y0
     x0 = x0.long()
     y0 = y0.long()
-    out = torch.zeros(Hs * Ws, dtype=m.dtype, device=m.device)
+    idx, val = [], []
     for ox, oy, w in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)),
                       (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
         xi = x0 + ox
         yi = y0 + oy
         ok = (xi >= 0) & (xi < Ws) & (yi >= 0) & (yi < Hs)
-        out.index_add_(0, (yi * Ws + xi)[ok], (m * w)[ok])
+        idx.append(torch.where(ok, yi * Ws + xi, torch.zeros_like(xi)))
+        val.append(m * w * ok)
+    out = torch.zeros(Hs * Ws, dtype=m.dtype, device=m.device)
+    out.index_add_(0, torch.cat(idx), torch.cat(val))
     return out.view(Hs, Ws)
 
 
@@ -295,7 +308,7 @@ def main():
     ap.add_argument("--traces", default=TRACE_DIR)
     ap.add_argument("--out", default=os.path.join(ROOT, "out", "traces.mp4"))
     ap.add_argument("--scale", type=int, default=2, help="2 = 1920x1080, 1 = 960x540")
-    ap.add_argument("--crf", type=int, default=16)
+    ap.add_argument("--crf", type=int, default=8, help="x264 crf (8: ~0.002 SSIM better than 16)")
     ap.add_argument("--still", type=int, help="render one output frame to PNG")
     ap.add_argument("--cpu", action="store_true")
     ap.add_argument("--no-compensate", action="store_true",
