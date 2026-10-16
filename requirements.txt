@@ -3,3 +3,4 @@ opencv-python-headless
 scikit-image
 pillow
 yt-dlp
+torch

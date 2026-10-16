@@ -12,8 +12,15 @@ import numpy as np
 class Mp4Writer:
     """1920x1080 (or any size) BGR frames -> H.264 yuv420p, BT.709 tv-range."""
 
+    # Measured level shift of this encode + the scorer's decode (BGR, 0..255):
+    # decoded = input + LEVEL_SHIFT for unclipped values (out/scratch pipe test,
+    # random colours, rms 0.7 after compensation). compensate=True pre-adds
+    # the inverse, which lifts the re-encoded reference from 0.975 to 0.993.
+    LEVEL_SHIFT = np.array([-3.7, -2.0, -3.7], np.float32)
+
     def __init__(self, path: str, W: int, H: int, fps_num: int, fps_den: int, crf: int = 16,
-                 preset: str = "slow"):
+                 preset: str = "slow", compensate: bool = False):
+        self.compensate = compensate
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         cmd = ["ffmpeg", "-v", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}",
@@ -26,6 +33,10 @@ class Mp4Writer:
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
     def write(self, frame: np.ndarray) -> None:
+        if self.compensate:
+            f = frame.astype(np.float32)
+            f = np.where(f > 0, f - self.LEVEL_SHIFT, 0.0)
+            frame = np.clip(f + 0.5, 0, 255).astype(np.uint8)
         self.proc.stdin.write(np.ascontiguousarray(frame).tobytes())
 
     def close(self) -> None:
