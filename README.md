@@ -39,8 +39,12 @@ Calibration baselines:
 Score history is tracked in `SCORES.md`.
 
 ## Status
-Current best: **0.666** (see `SCORES.md`), rendered by `.venv/bin/python -m src.render`
-to `out/render.mp4` (1920x1080, 60000/1001 fps, 540 frames).
-Strongest: column energy 0.91 (activity in the right places at the right time).
-Weakest: fine SSIM 0.43 (exact per-frame line positions). Next phase targets
-fine SSIM 0.95 via audio-driven waveforms and/or per-frame inverse rendering.
+Current best: **0.9852** (fine SSIM 0.9818, see `SCORES.md`) from per-frame
+inverse rendering (`docs/inverse.md`): `tools/trace/fit.py` fits vector strands
+to every content frame from `ref/` into `out/traces/` (~45 s/frame on MPS,
+needs `torch`), and `.venv/bin/python -m src.traces --score` renders them at
+1920x1080 to `out/traces.mp4` (76 s).
+The statistical renderer (`.venv/bin/python -m src.render`, no per-frame
+data) scores 0.666; see `docs/renderer.md`.
+Encoder note: `Mp4Writer(compensate=True)` cancels a −2…−4 level shift of the
+x264 encode + scorer decode (re-encoded reference 0.975 → 0.993).
