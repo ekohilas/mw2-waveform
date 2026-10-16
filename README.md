@@ -8,8 +8,10 @@ oscilloscope-style waveform on black.
 ## Rules
 - The source video, extracted frames and audio never get committed
   (`*.mkv`, `ref/`, `out/` are gitignored).
-- The renderer is generative code. Fitted parameters (keyframes, envelopes,
-  wave components) are fine; embedding reference pixels or audio samples is not.
+- Goal (updated): a frame-accurate, higher-quality re-creation. Per-frame data
+  derived from the local source (traced strands, extracted audio, fitted
+  curves) is allowed, but it is produced by committed scripts from the user's
+  local copy into `out/` (gitignored) rather than committed itself.
 
 ## Setup
 ```
@@ -40,6 +42,5 @@ Score history is tracked in `SCORES.md`.
 Current best: **0.666** (see `SCORES.md`), rendered by `.venv/bin/python -m src.render`
 to `out/render.mp4` (1920x1080, 60000/1001 fps, 540 frames).
 Strongest: column energy 0.91 (activity in the right places at the right time).
-Weakest: fine SSIM 0.43 (exact per-frame line positions). Closing that gap would
-mean tracing the original footage frame by frame, which this project deliberately
-does not do; the renderer is a parametric recreation of the look and timing.
+Weakest: fine SSIM 0.43 (exact per-frame line positions). Next phase targets
+fine SSIM 0.95 via audio-driven waveforms and/or per-frame inverse rendering.
