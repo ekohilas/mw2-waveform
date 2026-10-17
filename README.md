@@ -10,6 +10,9 @@ waveform on black. Output: 59.94 fps, 540 frames, at 1920x1080 (H.264) or
 > Infinity Ward. *Modern Warfare* is a trademark of Activision.
 
 ## Results
+
+https://github.com/user-attachments/assets/31d172bf-0020-4b7c-8d95-98a52c842233
+
 | render | command | fine SSIM | score |
 |---|---|---|---|
 | per-frame inverse rendering, 1080p H.264 | `python -m src.traces --score` | **0.982** | **0.985** |
