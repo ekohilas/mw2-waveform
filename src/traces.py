@@ -307,8 +307,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--traces", default=TRACE_DIR)
     ap.add_argument("--out", default=os.path.join(ROOT, "out", "traces.mp4"))
-    ap.add_argument("--scale", type=int, default=2, help="2 = 1920x1080, 1 = 960x540")
-    ap.add_argument("--crf", type=int, default=8, help="x264 crf (8: ~0.002 SSIM better than 16)")
+    ap.add_argument("--scale", type=int, default=2, help="2 = 1920x1080, 1 = 960x540, 4 = 3840x2160")
+    ap.add_argument("--codec", default="libx264", choices=["libx264", "libsvtav1"])
+    ap.add_argument("--preset", help="encoder preset (x264 name, or SVT-AV1 0-13; default slow / 4)")
+    ap.add_argument("--crf", type=int, help="crf (default: x264 8, ~0.002 SSIM better than 16; SVT-AV1 18)")
     ap.add_argument("--still", type=int, help="render one output frame to PNG")
     ap.add_argument("--cpu", action="store_true")
     ap.add_argument("--no-compensate", action="store_true",
@@ -327,8 +329,11 @@ def main():
         return
     t0 = time.time()
     if args.out.endswith(".mp4"):
-        w = Mp4Writer(args.out, cv.W, cv.H, 60000, 1001, crf=args.crf,
-                      compensate=not args.no_compensate)
+        av1 = args.codec == "libsvtav1"
+        crf = args.crf if args.crf is not None else (18 if av1 else 8)
+        preset = args.preset or ("4" if av1 else "slow")
+        w = Mp4Writer(args.out, cv.W, cv.H, 60000, 1001, crf=crf, preset=preset,
+                      compensate=not args.no_compensate, codec=args.codec)
     else:
         w = PngDirWriter(args.out)
     cache = {}
