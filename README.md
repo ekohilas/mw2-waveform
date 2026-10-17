@@ -1,11 +1,31 @@
-# MW2 teaser recreation (0:12–0:21)
+# MW2 Waveform Recreation
 
-Frame-accurate, higher-quality code re-creation of the visuals of the
-[*Modern Warfare 2* teaser trailer](https://www.youtube.com/watch?v=iXEQTZEizaQ),
-source time 0:12–0:21. The section is an abstract green oscilloscope-style waveform on black.
+Higher-quality code re-creation of the green oscilloscope-style waveform visuals of the
+[*Modern Warfare 2* teaser trailer](https://www.youtube.com/watch?v=iXEQTZEizaQ) (time 0:12 to 0:21).
 
 > Unofficial fan project, not affiliated with or endorsed by Activision or
 > Infinity Ward. *Modern Warfare* is a trademark of Activision.
+
+## Author's Note
+
+My past self loved these visuals, and always yearned for a future where they could be higher quality.
+
+Today, we're in that future.
+
+I wondered if I could let Claude run overnight, tasked to analyse and re-create the footage using code to ~95% accuracy.
+
+After some attempts, I'm fairly surprised with the result!
+
+That's not to say that there isn't work more that could be done.
+
+I say that because Claude's approach (with unbiased guidance) was to do curve fitting, which it seems like it over-fit.
+
+But what that really means is that this still needs a human element.
+
+There's room to think about:
+- How the audio could have contributed to the waveforms
+- The code behind the waveforms, such as how they interact, their width, speed, etc.
+- The different components, like the base waveform, the foreground waceform, and the ghost figures.
 
 ## Results
 
