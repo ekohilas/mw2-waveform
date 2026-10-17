@@ -1,10 +1,8 @@
 # MW2 teaser recreation (0:12–0:21)
 
 Frame-accurate, higher-quality code re-creation of the visuals of the
-*Modern Warfare 2* teaser (https://www.youtube.com/watch?v=iXEQTZEizaQ),
-source time 0:12–0:21. The section is an abstract green oscilloscope-style
-waveform on black. Output: 59.94 fps, 540 frames, at 1920x1080 (H.264) or
-3840x2160 (10-bit AV1).
+[*Modern Warfare 2* teaser trailer](https://www.youtube.com/watch?v=iXEQTZEizaQ),
+source time 0:12–0:21. The section is an abstract green oscilloscope-style waveform on black.
 
 > Unofficial fan project, not affiliated with or endorsed by Activision or
 > Infinity Ward. *Modern Warfare* is a trademark of Activision.
