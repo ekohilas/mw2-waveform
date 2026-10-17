@@ -7,9 +7,7 @@ waveform on black. Output: 59.94 fps, 540 frames, at 1920x1080 (H.264) or
 3840x2160 (10-bit AV1).
 
 > Unofficial fan project, not affiliated with or endorsed by Activision or
-> Infinity Ward. *Modern Warfare* is a trademark of Activision. This repo
-> contains only code, docs and measurements; no trailer footage, audio or
-> rendered output is included, and none should be published from it.
+> Infinity Ward. *Modern Warfare* is a trademark of Activision.
 
 ## Results
 | render | command | fine SSIM | score |
