@@ -1,6 +1,9 @@
 # Reference analysis: MW2 teaser 0:12–0:21 (oscilloscope section)
 
-The spec the renderer is fitted against. All numbers were measured on
+The spec the parametric renderer (`docs/renderer.md`) was fitted against; the
+frame-accurate pipeline (`docs/inverse.md`) starts from its line and colour
+model. Later findings: the waveform is not audio-driven (`docs/audio.md`), and
+`ref/frames/0000` sits at source pts 12.012–12.029 s, not exactly 12.000 s. All numbers were measured on
 `ref/frames/0000–0539.png` (960x540, 8-bit sRGB, the scoring resolution) by the
 scripts in `tools/analysis/` (run with `.venv/bin/python tools/analysis/<script>.py`).
 **Units: px at 960x540.** The renderer works at 1920x1080, so double every

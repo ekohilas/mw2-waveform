@@ -15,6 +15,8 @@ committed code into `out/traces/` (gitignored) and never committed.
 #   for a in $(seq 1 12 539); do .venv/bin/python -m tools.trace.fit --span $a $((a+10)) --fit-look --skip-done; done
 .venv/bin/python -m tools.trace.fit --report                  # per-second summary of the saved fits
 .venv/bin/python -m src.traces --score                        # 1920x1080 mp4 -> out/traces.mp4, then score.py
+.venv/bin/python -m src.traces --scale 4 --codec libsvtav1 --out out/traces_4k_av1.mp4 --score   # 3840x2160 10-bit AV1
+.venv/bin/python -m src.traces --still 251                    # one output frame -> out/trace_still_0251.png
 .venv/bin/python -m tools.trace.check_pipeline 101 345        # 960 render vs 1080p + x264 + area downscale
 ```
 
@@ -156,6 +158,13 @@ Full clip through `tools/score.py` (`python -m src.traces --score`):
 (previous best 0.4285 / 0.6658). Worst frame c345 (0.949). Render of all
 540 frames at 1920x1080 + x264: 76 s (MPS).
 
+4K: the strands are vector curves, so `--scale 4` draws them natively at
+3840x2160 (not upscaled). With `--codec libsvtav1` (10-bit yuv420p10le,
+crf 18, preset 4) the 17 MB file scores **ssim 0.9813, ssim_blur 0.9984,
+color 0.9614, energy 0.9928, score 0.9835** after the scorer's downscale;
+render + encode ≈ 2.3 min. The small colour loss vs 1080p is because the
+level compensation was measured for 8-bit x264, not 10-bit AV1.
+
 ### 960 optimum vs 1080p delivery
 
 The fit renders at 2x and area-averages, so the remaining gap is quantisation
@@ -195,6 +204,10 @@ the whole clip the fit → mp4 loss is 0.0020 fine SSIM.
 * **Colour** (0.967) is the weakest metric: the colour model is three
   RGB-tinted Gaussians + per-frame tints; dim cores are paler than bright
   ones (analysis 1.4) and the model has no brightness-dependent tint.
+* **Colour artefacts**: the unconstrained per-frame tints can push green
+  below red/blue in very bright spots, e.g. a ~130 px magenta speck on the
+  tallest peak of frame 251 (1080p x≈828–850, y≈471–479). Too small to move
+  the score; fix by constraining tints (G ≥ R, B) and refitting affected frames.
 * **Looks drift**: per-frame looks are unconstrained between frames; late
   frames moved the second width layer to a very wide blur (σ up to ~180 px),
   effectively a second haze. Harmless for the score, but the parameters are

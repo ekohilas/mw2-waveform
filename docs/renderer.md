@@ -1,8 +1,11 @@
-# Renderer
+# Renderer (parametric, style-only)
 
 Generative recreation of the 0:12–0:21 oscilloscope section. Pure code +
 a compact parameter file; the renderer never reads `ref/`, the source video or
-audio.
+audio. It matches the look and timing statistically (best score 0.666, fine
+SSIM 0.43) but not the per-frame line positions. The frame-accurate
+re-creation (score 0.985) is the inverse-rendering pipeline in
+`docs/inverse.md` (`src/traces.py`); this renderer is kept as a baseline.
 
 ## Usage
 ```
@@ -26,7 +29,7 @@ unique content images are rendered (the source runs at 29.97 fps; output frame
 | `raster.py` | anti-aliased polyline rasteriser (difference-array vertical spans, exact fractional coverage, O(segments + pixels)); Gaussian blur (downsampled for big σ); smudge blobs |
 | `frame.py` | `FrameRenderer`: layers -> core buffer -> per-channel exposure (3-Gaussian kernel with RGB tints) + smudges -> `255·(1−exp(−E)) − offset` |
 | `color.py` | legacy single-channel tonemap + colour ramp (`look.mode = "ramp"`) |
-| `encode.py` | ffmpeg pipe: libx264 crf 16, yuv420p, BT.709 tv-range, 60000/1001; PNG dir writer |
+| `encode.py` | ffmpeg pipe, BT.709 tv-range, 60000/1001: libx264 yuv420p (crf 16 here) or `codec="libsvtav1"` 10-bit AV1; optional `compensate=True` encoder level-shift correction (off for `src.render`); PNG dir writer |
 | `render.py` | CLI; spawn-pool over cores, ordered writer that duplicates held frames |
 | `fit/` | fit-time tools (read `ref/`; never imported by the renderer) |
 
